@@ -43,11 +43,12 @@ func (cab FS) Sub(path string) (*FS, error) {
 }
 
 func (cab FS) MarshalJSON() ([]byte, error) {
-	paths, err := Paths(cab)
+	infos, err := Infos(cab)
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(paths)
+
+	return json.Marshal(infos)
 }
 
 func (cab FS) Stat(path string) (fs.FileInfo, error) {

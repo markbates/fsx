@@ -1,7 +1,6 @@
 package fsx
 
 import (
-	"encoding/json"
 	"testing"
 	"testing/fstest"
 
@@ -70,16 +69,10 @@ func Test_FS_MarshalJSON(t *testing.T) {
 	cab := NewFS(mfs)
 	r.NotNil(cab)
 
-	exp, err := json.Marshal([]string{
-		"assets",
-		"assets/foo.png",
-		"module.md",
-	})
+	b, err := cab.MarshalJSON()
 	r.NoError(err)
-
-	act, err := cab.MarshalJSON()
-	r.NoError(err)
-	r.Equal(string(exp), string(act))
+	act := string(b)
+	r.Contains(act, `"name":"foo.png","size":14`)
 }
 
 func Test_FS_Stat(t *testing.T) {
