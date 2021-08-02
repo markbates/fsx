@@ -56,6 +56,31 @@ func Test_FS_Sub(t *testing.T) {
 	kid, err := cab.Sub("assets")
 	r.NoError(err)
 	r.True(kid.Exists("foo.png"))
+	r.Equal("assets", kid.Root)
+}
+
+func Test_FS_Abs(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	const exp = `assets/foo.png`
+
+	mfs := ModuleFS(t)
+	tfs.AppendFile(t, mfs, exp)
+
+	cab := NewFS(mfs)
+	r.NotNil(cab)
+
+	_, err := cab.Abs("foo.png")
+	r.Error(err)
+
+	kid, err := cab.Sub("assets")
+	r.NoError(err)
+
+	act, err := kid.Abs("foo.png")
+	r.NoError(err)
+	r.Equal(exp, act)
+
 }
 
 func Test_FS_MarshalJSON(t *testing.T) {

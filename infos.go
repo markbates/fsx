@@ -14,7 +14,6 @@ type FileInfoJSON struct {
 	Mode    fs.FileMode `json:"mode,omitempty"`
 	Name    string      `json:"name,omitempty"`
 	Size    int64       `json:"size,omitempty"`
-	Sys     interface{} `json:"sys,omitempty"`
 }
 
 func NewFileInfoJSON(info fs.FileInfo) FileInfoJSON {
@@ -24,7 +23,6 @@ func NewFileInfoJSON(info fs.FileInfo) FileInfoJSON {
 		Mode:    info.Mode(),
 		Name:    info.Name(),
 		Size:    info.Size(),
-		Sys:     info.Sys(),
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"path/filepath"
 )
 
 var (
@@ -16,6 +17,7 @@ var (
 
 type FS struct {
 	fs.FS
+	Root string
 }
 
 func (cab FS) Exists(name string) bool {
@@ -38,8 +40,16 @@ func (cab FS) Sub(path string) (*FS, error) {
 		return nil, err
 	}
 	return &FS{
-		FS: kid,
+		FS:   kid,
+		Root: filepath.Join(cab.Root, path),
 	}, nil
+}
+
+func (cab FS) Abs(name string) (string, error) {
+	if _, err := cab.Stat(name); err != nil {
+		return name, err
+	}
+	return filepath.Join(cab.Root, name), nil
 }
 
 func (cab FS) MarshalJSON() ([]byte, error) {
@@ -52,16 +62,7 @@ func (cab FS) MarshalJSON() ([]byte, error) {
 }
 
 func (cab FS) Stat(path string) (fs.FileInfo, error) {
-	if sfs, ok := cab.FS.(fs.StatFS); ok {
-		return sfs.Stat(path)
-	}
-
-	f, err := cab.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	return f.Stat()
+	return fs.Stat(cab.FS, path)
 }
 
 func (cab FS) String() string {
