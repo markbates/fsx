@@ -31,7 +31,7 @@ func (cab FS) ReadFile(name string) ([]byte, error) {
 	if rfs, ok := cab.FS.(fs.ReadFileFS); ok {
 		return rfs.ReadFile(name)
 	}
-	return fs.ReadFile(cab, name)
+	return fs.ReadFile(cab.FS, name)
 }
 
 func (cab FS) Sub(path string) (*FS, error) {
