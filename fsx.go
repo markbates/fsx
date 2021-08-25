@@ -74,6 +74,10 @@ func (cab FS) String() string {
 }
 
 func NewFS(cab fs.FS) *FS {
+	if c, ok := cab.(*FS); ok {
+		return c
+	}
+
 	return &FS{
 		FS: cab,
 	}
