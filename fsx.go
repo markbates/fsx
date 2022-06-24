@@ -1,84 +1,112 @@
 package fsx
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/fs"
-	"path/filepath"
-)
-
-var (
-	_ fmt.Stringer   = &FS{}
-	_ fs.FS          = &FS{}
-	_ fs.StatFS      = &FS{}
-	_ fs.ReadFileFS  = &FS{}
-	_ json.Marshaler = &FS{}
+	"sort"
+	"sync"
+	"testing/fstest"
+	"time"
 )
 
 type FS struct {
-	fs.FS
-	Root string
+	Backing fs.FS
+
+	extras fstest.MapFS
+
+	sync.RWMutex
 }
 
-func (cab FS) Exists(name string) bool {
-	if _, err := cab.Stat(name); err != nil {
-		return false
+func (cab *FS) WriteFile(name string, data []byte) error {
+	if err := cab.validate(); err != nil {
+		return err
 	}
-	return true
-}
 
-func (cab FS) ReadFile(name string) ([]byte, error) {
-	if rfs, ok := cab.FS.(fs.ReadFileFS); ok {
-		return rfs.ReadFile(name)
+	cab.Lock()
+	defer cab.Unlock()
+
+	cab.extras[name] = &fstest.MapFile{
+		Data:    data,
+		ModTime: time.Now(),
 	}
-	return fs.ReadFile(cab.FS, name)
+
+	return nil
 }
 
-func (cab FS) Sub(path string) (*FS, error) {
-	kid, err := fs.Sub(cab.FS, path)
-	if err != nil {
-		return nil, err
-	}
-	return &FS{
-		FS:   kid,
-		Root: filepath.Join(cab.Root, path),
-	}, nil
-}
-
-func (cab FS) Abs(name string) (string, error) {
-	if _, err := cab.Stat(name); err != nil {
-		return name, err
-	}
-	return filepath.Join(cab.Root, name), nil
-}
-
-func (cab FS) MarshalJSON() ([]byte, error) {
-	infos, err := Infos(cab)
-	if err != nil {
+func (cab *FS) Open(name string) (fs.File, error) {
+	if err := cab.validate(); err != nil {
 		return nil, err
 	}
 
-	return json.Marshal(infos)
+	cab.RLock()
+	defer cab.RUnlock()
+
+	if f, err := cab.extras.Open(name); err == nil {
+		return f, nil
+	}
+
+	return cab.Backing.Open(name)
 }
 
-func (cab FS) Stat(path string) (fs.FileInfo, error) {
-	return fs.Stat(cab.FS, path)
+func (cab *FS) ReadDir(name string) ([]fs.DirEntry, error) {
+	if err := cab.validate(); err != nil {
+		return nil, err
+	}
+
+	cab.RLock()
+	defer cab.RUnlock()
+
+	dir := map[string][]fs.DirEntry{}
+
+	if d, err := cab.extras.ReadDir(name); err == nil {
+		dir[name] = d
+	}
+
+	if d, err := fs.ReadDir(cab.Backing, name); err == nil {
+		dir[name] = append(dir[name], d...)
+	}
+
+	if len(dir) == 0 {
+		return nil, fs.ErrNotExist
+	}
+
+	entries := dir[name]
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+
+	return entries, nil
 }
 
-func (cab FS) String() string {
-	b, err := json.Marshal(cab)
+func (cab *FS) Stat(name string) (fs.FileInfo, error) {
+	if err := cab.validate(); err != nil {
+		return nil, err
+	}
+
+	f, err := cab.Open(name)
 	if err != nil {
-		return fmt.Sprintf("can not marshal cab %v %s", cab.FS, err)
+		return nil, err
 	}
-	return string(b)
+	defer f.Close()
+
+	return f.Stat()
 }
 
-func NewFS(cab fs.FS) *FS {
-	if c, ok := cab.(*FS); ok {
-		return c
+func (cab *FS) validate() error {
+	if cab == nil {
+		return fmt.Errorf("FS is nil")
 	}
 
-	return &FS{
-		FS: cab,
+	cab.Lock()
+	defer cab.Unlock()
+
+	if cab.Backing == nil {
+		cab.Backing = fstest.MapFS{}
 	}
+
+	if cab.extras == nil {
+		cab.extras = fstest.MapFS{}
+	}
+
+	return nil
 }

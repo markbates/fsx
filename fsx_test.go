@@ -1,143 +1,131 @@
 package fsx
 
 import (
+	"io/fs"
 	"testing"
 	"testing/fstest"
 
-	"github.com/markbates/fsx/tfs"
 	"github.com/stretchr/testify/require"
 )
 
-func ModuleFS(t *testing.T) fstest.MapFS {
-	t.Helper()
-	cab := fstest.MapFS{
-		"module.md": tfs.File(t, "module.md"),
+func Test_FS_Open(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cab := &FS{
+		Backing: fstest.MapFS{
+			"module.md": &fstest.MapFile{
+				Data: []byte("# Module"),
+			},
+		},
+		extras: fstest.MapFS{
+			"assets/foo.png": &fstest.MapFile{
+				Data: []byte("foo"),
+			},
+		},
 	}
-	return cab
-}
 
-func Test_FS_Exists(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-
-	mfs := ModuleFS(t)
-
-	cab := NewFS(mfs)
-	r.NotNil(cab)
-
-	r.True(cab.Exists("module.md"))
-	r.False(cab.Exists("404"))
-}
-
-func Test_FS_ReadFile(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-
-	mfs := ModuleFS(t)
-	cab := NewFS(mfs)
-	r.NotNil(cab)
-
-	b, err := cab.ReadFile("module.md")
+	b, err := fs.ReadFile(cab, "module.md")
 	r.NoError(err)
-	r.Equal(`MODULE.MD`, string(b))
-}
 
-func Test_FS_Sub(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
+	r.Equal([]byte("# Module"), b)
 
-	mfs := ModuleFS(t)
-	tfs.AppendFile(t, mfs, "assets/foo.png")
-
-	cab := NewFS(mfs)
-	r.NotNil(cab)
-	r.False(cab.Exists("foo.png"))
-
-	kid, err := cab.Sub("assets")
+	b, err = fs.ReadFile(cab, "assets/foo.png")
 	r.NoError(err)
-	r.True(kid.Exists("foo.png"))
-	r.Equal("assets", kid.Root)
-}
 
-func Test_FS_Abs(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
+	r.Equal([]byte("foo"), b)
 
-	const exp = `assets/foo.png`
-
-	mfs := ModuleFS(t)
-	tfs.AppendFile(t, mfs, exp)
-
-	cab := NewFS(mfs)
-	r.NotNil(cab)
-
-	_, err := cab.Abs("foo.png")
+	_, err = fs.ReadFile(cab, "src/foo.go")
 	r.Error(err)
-
-	kid, err := cab.Sub("assets")
-	r.NoError(err)
-
-	act, err := kid.Abs("foo.png")
-	r.NoError(err)
-	r.Equal(exp, act)
-
 }
 
-func Test_FS_MarshalJSON(t *testing.T) {
+func Test_FS_Write(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	mfs := ModuleFS(t)
-	tfs.AppendFile(t, mfs, ".DS_Store")
-	tfs.AppendFile(t, mfs, "assets/foo.png")
+	cab := &FS{
+		Backing: fstest.MapFS{},
+	}
 
-	cab := NewFS(mfs)
-	r.NotNil(cab)
-
-	b, err := cab.MarshalJSON()
+	err := cab.WriteFile("module.md", []byte("# Module"))
 	r.NoError(err)
-	act := string(b)
-	r.Contains(act, `"name":"foo.png","size":14`)
+
+	b, err := fs.ReadFile(cab, "module.md")
+	r.NoError(err)
+
+	r.Equal([]byte("# Module"), b)
+
+}
+
+func Test_FS_ReadDir_Walk(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cab := &FS{
+		Backing: fstest.MapFS{
+			"module.md": &fstest.MapFile{
+				Data: []byte("# Module"),
+			},
+			"assets/foo.png": &fstest.MapFile{
+				Data: []byte("foo"),
+			},
+		},
+		extras: fstest.MapFS{
+			"src/foo.go": &fstest.MapFile{
+				Data: []byte("package foo"),
+			},
+		},
+	}
+
+	var walked []string
+
+	err := fs.WalkDir(cab, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		walked = append(walked, path)
+
+		return nil
+	})
+
+	r.NoError(err)
+
+	exp := []string{"assets/foo.png", "module.md", "src/foo.go"}
+	r.Len(walked, len(exp))
+
+	r.Equal(exp, walked)
 }
 
 func Test_FS_Stat(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	mfs := ModuleFS(t)
-	cab := NewFS(mfs)
-	r.NotNil(cab)
-
-	info, err := cab.Stat("module.md")
-	r.NoError(err)
-	r.NotNil(info)
-}
-
-func Test_Paths(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-
-	mfs := ModuleFS(t)
-	tfs.AppendFile(t, mfs, ".DS_Store")
-	tfs.AppendFile(t, mfs, "assets/foo.png")
-
-	act, err := Paths(mfs)
-	r.NoError(err)
-
-	exp := []string{
-		"assets",
-		"assets/foo.png",
-		"module.md",
+	cab := &FS{
+		Backing: fstest.MapFS{
+			"module.md": &fstest.MapFile{
+				Data: []byte("# Module"),
+			},
+		},
+		extras: fstest.MapFS{
+			"src/foo.go": &fstest.MapFile{
+				Data: []byte("package foo"),
+			},
+		},
 	}
-	r.Equal(exp, act)
-}
 
-func Test_DirFS(t *testing.T) {
-	t.Parallel()
-	r := require.New(t)
-
-	cab, err := DirFS(".")
+	fi, err := fs.Stat(cab, "module.md")
 	r.NoError(err)
-	r.NotNil(cab)
-	r.True(cab.Exists("fsx_test.go"))
+	r.NotNil(fi)
+
+	fi, err = fs.Stat(cab, "src/foo.go")
+	r.NoError(err)
+	r.NotNil(fi)
+
+	_, err = fs.Stat(cab, "assets/foo.png")
+	r.Error(err)
 }
