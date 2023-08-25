@@ -2,7 +2,6 @@ package fsx
 
 import (
 	"io"
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -48,5 +47,4 @@ func Test_DirFS_Create(t *testing.T) {
 
 	r.Equal("Hello World!", string(b))
 
-	panic(runtime.Version())
 }
